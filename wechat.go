@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	TOKEN  = "xiaofei"
-	APIKEY = "9aa081ff30e207f96c46dfdd21a7b65f"
+	TOKEN  = "token"
+	APIKEY = "apikey"
 	//TUURL  = "http://127.0.0.1:8989/postpage"
 	TUURL = "http://www.tuling123.com/openapi/api"
 	//-------menukey自定义菜单按键值
