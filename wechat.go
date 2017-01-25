@@ -4,11 +4,14 @@ import (
 	"crypto/sha1"
 	"encoding/xml"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/bitly/go-simplejson"
+	"github.com/davecgh/go-spew/spew"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -16,7 +19,7 @@ import (
 
 const (
 	TOKEN  = "token"
-	APIKEY = "apikey"
+	APIKEY = "9aa081ff30e207f96c46dfdd21a7b65f"
 	//TUURL  = "http://127.0.0.1:8989/postpage"
 	TUURL = "http://www.tuling123.com/openapi/api"
 	//-------menukey自定义菜单按键值
@@ -50,6 +53,55 @@ type Message struct {
 	Url          string  `xml:",omitempty"` //消息url
 	//-----------------response--------------
 
+}
+
+var url, keyword string
+
+type Movie struct {
+	Title      string
+	Href       string
+	Content    string
+	Magnetlink string
+}
+
+func checkError(err error) {
+	if err != nil {
+		fmt.Println(err)
+		spew.Dump(err)
+		os.Exit(1)
+	}
+
+}
+func getMovie(keyword string, page int) (movies map[int]*Movie) {
+	//http://stackoverflow.com/questions/32751537/why-do-i-get-a-cannot-assign-error-when-setting-value-to-a-struct-as-a-value-i
+	movies = make(map[int]*Movie)
+	url = "http://www.btyunsou.com"
+	searchUrl := url + "/search/" + keyword + "_ctime_" + fmt.Sprintf("%d", page) + ".html"
+	//fmt.Println(searchUrl + url)
+	res, err := http.Get(searchUrl)
+	/*checkError(err)
+	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	fmt.Println(string(body))*/
+	doc, err := goquery.NewDocumentFromResponse(res)
+	checkError(err)
+	doc.Find(".media").Each(func(i int, s *goquery.Selection) {
+		href, ok := s.Find(".title").Attr("href")
+		if !ok {
+			href = "/"
+		}
+
+		subdoc, err := goquery.NewDocument(url + href)
+		//spew.Dump(subdoc)
+		checkError(err)
+		movies[i] = &Movie{
+			Title:      strings.TrimSpace(strings.Trim(s.Find(".title").Text(), "\r\n")),
+			Href:       url + href,
+			Magnetlink: subdoc.Find(".magnet-link").Text(),
+			Content:    strings.TrimSpace(strings.Trim(subdoc.Find(".icon-film").Parent().Text()+subdoc.Find(".icon-film").Parent().Next().Text(), "\r\n")),
+		}
+	})
+	return
 }
 
 /**
@@ -89,6 +141,11 @@ func validtion(w http.ResponseWriter, r *http.Request) (e bool, s string) {
 }
 
 func (message Message) reText() (response Message) {
+	str := ""
+	movies := getMovie(message.Content, 1)
+	for k, v := range movies {
+		str += "title:" + v.Title + "\r\n" + "number:" + fmt.Sprintf("%d", k) + "\r\n" + "链接：" + v.Magnetlink + "\r\n"
+	}
 	//图灵机器人介入
 	info := `{"key":"` + APIKEY + `","info":"` + message.Content + `","userid":"` + message.FromUserName + `"}`
 	reader := strings.NewReader(info)
@@ -103,11 +160,12 @@ func (message Message) reText() (response Message) {
 	//处理文本消息
 	case 100000:
 		text, _ := js.Get("text").String()
+		fmt.Println(text)
 		response = Message{ToUserName: message.FromUserName,
 			FromUserName: message.ToUserName,
 			CreateTime:   time.Now().Unix(),
 			MsgType:      "text",
-			Content:      text}
+			Content:      str} //text
 		return response
 	//处理链接消息
 	case 200000:
@@ -204,6 +262,7 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 func main() {
+
 	http.HandleFunc("/", mainHandler)
 	log.Fatal(http.ListenAndServe(":80", nil))
 }
